@@ -1738,6 +1738,8 @@ select_stmt_nake
   = __ cte:with_clause? __ KW_SELECT ___
     opts:option_clause? __
     d:KW_DISTINCT?      __
+    db:distinct_by_clause?  __
+    t:top?  __
     c:column_clause     __
     ci:into_clause?      __
     f:from_clause?      __
@@ -2052,7 +2054,13 @@ on_clause
 
 where_clause
   = KW_WHERE __ e:or_and_where_expr { return e; }
-
+  
+top
+  = KW_TOP __ (KW_INT / KW_ALL)? __ e:expr_list { return e.value; }
+  
+distinct_by_clause
+  = d:KW_DISTINCT? __ KW_BY __ e:expr_list { return e.value; }
+ 
 group_by_clause
   = KW_GROUP __ KW_BY __ e:expr_list { return e.value; }
 
@@ -2497,6 +2505,7 @@ comparison_op_right
   / is_op_right
   / like_op_right
   / regexp_op_right
+  / all_op_right
 
 arithmetic_op_right
   = l:(__ arithmetic_comparison_operator __ additive_expr)+ {
@@ -2505,6 +2514,9 @@ arithmetic_op_right
 
 arithmetic_comparison_operator
   = ">=" / ">" / "<=" / "<>" / "<" / "=" / "!="
+
+all_op_right
+  = arithmetic_comparison_operator __ KW_ALL __ select_stmt
 
 is_op_right
   = KW_IS __ right:additive_expr {
@@ -2682,7 +2694,7 @@ column_name
 ident_name
   =  start:ident_start parts:ident_part* { return start + parts.join(''); }
 
-ident_start = [A-Za-z_]
+ident_start = [A-Za-z_%]
 
 ident_part  = [A-Za-z0-9_$]
 
@@ -2697,6 +2709,11 @@ param
 aggr_func
   = aggr_fun_count
   / aggr_fun_smma
+  / aggr_fun_json_arrayagg
+  / aggr_fun_list
+  / aggr_fun_STDDEV_STDDEV_SAMP_STDDEV_POP
+  / aggr_fun_variance_var_samp_var_pop
+  / aggr_fun_xmlagg
 
 aggr_fun_smma
   = name:KW_SUM_MAX_MIN_AVG  __ LPAREN __ e:additive_expr __ RPAREN __ bc:over_partition? {
@@ -2851,6 +2868,85 @@ count_arg
   = e:star_expr { return { expr: e }; }
   / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN __ or:order_by_clause? __ s:concat_separator? { return { distinct: d, expr: c, orderby: or, parentheses: true, separator: s }; }
   / d:KW_DISTINCT? __ c:expr __ or:order_by_clause? __ s:concat_separator? { return { distinct: d, expr: c, orderby: or, separator: s }; }
+  / d:KW_DISTINCT? __ KW_BY __ LPAREN __ column_name __ RPAREN __ c:expr
+  / KW_ALL __ c:expr
+  / column_name __ c:expr
+  / column_name __ c:expr
+  
+aggr_fun_json_arrayagg
+	= name:KW_JSON_ARRAYAGG __ LPAREN __ e:additive_expr? __ arg:json_arrayagg_arg? __ RPAREN __ bc:over_partition? {
+      return {
+        type: 'aggr_func',
+        name: name,
+        args: {
+          expr: e
+        },
+        over: bc,
+      };
+    }
+
+json_arrayagg_arg
+ = KW_ALL? __ column_name? __ d:KW_DISTINCT? __ column_name? __ db:distinct_by_clause? __ column_name? __ c:expr?
+
+aggr_fun_list
+	= name:KW_LIST __ LPAREN __ e:additive_expr? __ arg:list_arg? __ RPAREN __ bc:over_partition? {
+      return {
+        type: 'aggr_func',
+        name: name,
+        args: {
+          expr: e
+        },
+        over: bc,
+      };
+    }
+
+list_arg
+ = KW_ALL? __ column_name? __ d:KW_DISTINCT? __ column_name? __ db:distinct_by_clause? __ column_name? __ c:expr?
+
+aggr_fun_STDDEV_STDDEV_SAMP_STDDEV_POP
+     = name:(KW_STDDEV / KW_STDDEV_SAMP / KW_STDDEV_POP) __ LPAREN __ e:additive_expr? __ arg:STDDEV_STDDEV_SAMP_STDDEV_POP_arg? __ RPAREN __ bc:over_partition? {
+      return {
+        type: 'aggr_func',
+        name: name,
+        args: {
+          expr: e
+        },
+        over: bc,
+      };
+    }
+
+STDDEV_STDDEV_SAMP_STDDEV_POP_arg
+	= KW_ALL? __ column_name? __ d:KW_DISTINCT? __ column_name? __ db:distinct_by_clause? __ column_name? __ c:expr?
+
+aggr_fun_variance_var_samp_var_pop
+  	=  name:(KW_VARIANCE / KW_VAR_SAMP / KW_VAR_POP) __ LPAREN __ e:additive_expr? __ arg:variance_var_samp_var_pop_arg? __ RPAREN __ bc:over_partition? {
+      return {
+        type: 'aggr_func',
+        name: name,
+        args: {
+          expr: e
+        },
+        over: bc,
+      };
+    }
+
+variance_var_samp_var_pop_arg
+	=  KW_ALL? __ column_name? __ d:KW_DISTINCT? __ column_name? __ db:distinct_by_clause? __ column_name? __ c:expr?
+
+aggr_fun_xmlagg
+ =  name:(KW_XMLAGG) __ LPAREN __ e:additive_expr? __ arg:xmlagg_arg? __ RPAREN __ bc:over_partition? {
+      return {
+        type: 'aggr_func',
+        name: name,
+        args: {
+          expr: e
+        },
+        over: bc,
+      };
+    }
+
+xmlagg_arg
+	=  KW_ALL? __ column_name? __ d:KW_DISTINCT? __ column_name? __ db:distinct_by_clause? __ column_name? __ c:expr?
 
 star_expr
   = "*" { return { type: 'star', value: '*' }; }
@@ -3324,6 +3420,15 @@ KW_MAX      = "MAX"i        !ident_start { return 'MAX'; }
 KW_MIN      = "MIN"i        !ident_start { return 'MIN'; }
 KW_SUM      = "SUM"i        !ident_start { return 'SUM'; }
 KW_AVG      = "AVG"i        !ident_start { return 'AVG'; }
+KW_JSON_ARRAYAGG	= "JSON_ARRAYAGG"i	!ident_start { return 'JSON_ARRAYAGG'; }
+KW_LIST		= "LIST"i	!ident_start { return 'LIST'; }
+KW_STDDEV	= "STDDEV"i	!ident_start { return 'STDDEV'; }	  
+KW_STDDEV_SAMP	= "STDDEV_SAMP"i  !ident_start { return 'STDDEV_SAMP'; }
+KW_STDDEV_POP	= "STDDEV_POP"i		!ident_start { return 'STDDEV_POP'; }
+KW_VARIANCE		= "VARIANCE"i		!ident_start { return 'VARIANCE'; }
+KW_VAR_SAMP		= "VAR_SAMP"i		!ident_start { return 'VAR_SAMP'; }		
+KW_VAR_POP		= "VAR_POP"i		!ident_start { return 'VAR_POP'; }
+KW_XMLAGG		= "XMLAGG"i			!ident_start { return 'XMLAGG'; }
 
 KW_EXTRACT  = "EXTRACT"i    !ident_start { return 'EXTRACT'; }
 KW_CALL     = "CALL"i       !ident_start { return 'CALL'; }
@@ -3365,6 +3470,7 @@ KW_DATETIME     = "DATETIME"i     !ident_start { return 'DATETIME'; }
 KW_ROWS     = "ROWS"i     !ident_start { return 'ROWS'; }
 KW_TIME     = "TIME"i     !ident_start { return 'TIME'; }
 KW_TIMESTAMP = "TIMESTAMP"i !ident_start { return 'TIMESTAMP'; }
+KW_TOP = "TOP"i !ident_start !ident_start { return 'TOP'; }
 KW_YEAR = "YEAR"i !ident_start { return 'YEAR'; }
 KW_TRUNCATE = "TRUNCATE"i !ident_start { return 'TRUNCATE'; }
 KW_USER     = "USER"i     !ident_start { return 'USER'; }
