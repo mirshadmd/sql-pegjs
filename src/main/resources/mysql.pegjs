@@ -456,7 +456,7 @@ multiple_stmt
     }
 
 set_op
-  = KW_UNION __ KW_ALL __ (o:optimize_option)? { return 'union all' }
+  = KW_UNION __ KW_ALL { return 'union all' }
   / KW_UNION { return 'union' }
   / KW_MINUS { return 'minus' }
   / KW_INTERSECT { return 'intersect' }
@@ -1889,10 +1889,7 @@ into_clause
   }
 
 from_clause
-  = KW_FROM __ (o:optimize_option)? __ l:table_ref_list { return l , o ; }
-  
-optimize_option
-	= multiplicative_operator __ (KW_NOREDUCE / KW_ALLINDEX / KW_FIRSTTABLE / KW_FULL / KW_IGNOREINDEX / KW_INORDER / KW_NOFLATTEN / KW_NOMERGE / KW_NOSVSO / KW_NOTOPOPT / KW_NOUNIONOROPT / KW_NOUNIONOROPT / KW_PARALLEL / KW_STARTTABLE)?
+  = KW_FROM __ l:table_ref_list { return l; }
 
 table_to_list
   = head:table_to_item tail:(__ COMMA __ table_to_item)* {
@@ -1990,7 +1987,7 @@ table_base
         type: 'dual'
       };
   }
-  / t:table_name __ alias:alias_clause? __ (LPAREN __ literal_string __ RPAREN)? {
+  / t:table_name __ alias:alias_clause? {
       if (t.type === 'var') {
         t.as = alias;
         return t;
@@ -2001,15 +1998,6 @@ table_base
         as: alias,
       };
     }
-   / LPAREN? __ t:table_name __ KW_AS? __ alias_ident? __ RPAREN? {
-      if (t.type === 'var') {
-        return t;
-      }
-      return {
-        db: t.db,
-        table: t.table,
-      };
-    }  
   / LPAREN __ t:table_name __ r:RPAREN __ alias:alias_clause? {
     const parentheses =  true
       if (t.type === 'var') {
@@ -2065,7 +2053,7 @@ on_clause
   = KW_ON __ e:or_and_where_expr { return e; }
 
 where_clause
-  = KW_WHERE __ for_some? __ e:or_and_where_expr? { return e ; }
+  = KW_WHERE __ e:or_and_where_expr { return e; }
   
 top
   = KW_TOP __ (KW_INT / KW_ALL)? __ e:expr_list { return e.value; }
@@ -2085,7 +2073,7 @@ column_ref_list
     }
 
 having_clause
-  = KW_HAVING __ e:or_and_where_expr __ in_op? { return e; }
+  = KW_HAVING __ e:or_and_where_expr { return e; }
 
 partition_by_clause
   = KW_PARTITION __ KW_BY __ bc:column_clause { return bc; }
@@ -2490,7 +2478,7 @@ not_expr
   / (KW_NOT / "!" !"=") __ expr:not_expr {
       return createUnaryExpr('NOT', expr);
     }
-    
+
 comparison_expr
   = left:additive_expr __ rh:comparison_op_right? {
       if (rh === null) return left;
@@ -2528,7 +2516,7 @@ arithmetic_comparison_operator
   = ">=" / ">" / "<=" / "<>" / "<" / "=" / "!="
 
 all_op_right
-  = arithmetic_comparison_operator __ KW_ALL __ select_stmt?
+  = arithmetic_comparison_operator __ KW_ALL __ select_stmt
 
 is_op_right
   = KW_IS __ right:additive_expr {
@@ -2556,7 +2544,7 @@ between_or_not_between_op
 like_op
   = nk:(KW_NOT __ KW_LIKE) { return nk[0] + ' ' + nk[2]; }
   / KW_LIKE
-  
+
 regexp_op
   = n: KW_NOT? __ k:(KW_REGEXP / KW_RLIKE) {
     return n ? `${n} ${k}` : k
@@ -2564,9 +2552,6 @@ regexp_op
 in_op
   = nk:(KW_NOT __ KW_IN) { return nk[0] + ' ' + nk[2]; }
   / KW_IN
-
-for_some
-  = KW_FOR __ KW_SOME __ l:table_ref_list
 
 regexp_op_right
   = op:regexp_op __ b:'BINARY'i? __ e:(func_call / literal_string / column_ref) {
@@ -2700,7 +2685,7 @@ column_without_kw
   / quoted_ident
 
 column
-  = name:column_name __ l:literal_string? { return name , l ; }
+  = name:column_name { return name; }
   / backticks_quoted_ident
 
 column_name
@@ -2731,7 +2716,7 @@ aggr_func
   / aggr_fun_xmlagg
 
 aggr_fun_smma
-  = name:KW_SUM_MAX_MIN_AVG  __ LPAREN __ e:additive_expr? __ arg:avg_arg? __ RPAREN __ bc:over_partition? {
+  = name:KW_SUM_MAX_MIN_AVG  __ LPAREN __ e:additive_expr __ RPAREN __ bc:over_partition? {
       return {
         type: 'aggr_func',
         name: name,
@@ -2744,9 +2729,6 @@ aggr_fun_smma
 
 KW_SUM_MAX_MIN_AVG
   = KW_SUM / KW_MAX / KW_MIN / KW_AVG
-  
-avg_arg
-    = KW_ALL? __ column_name? __ d:KW_DISTINCT? __ column_name? __ db:distinct_by_clause? __ column_name? __ c:expr?
 
 on_update_current_timestamp
   = KW_ON __ KW_UPDATE __ kw:KW_CURRENT_TIMESTAMP __ LPAREN __ l:expr_list? __ RPAREN{
@@ -3378,22 +3360,6 @@ KW_SET      = "SET"i        !ident_start
 KW_UNLOCK   = "UNLOCK"i     !ident_start
 KW_LOCK     = "LOCK"i       !ident_start
 
-//optimize-option
-KW_NOREDUCE			= "NOREDUCE"i		!ident_start
-KW_ALLINDEX 		= "ALLINDEX"i		!ident_start			
-KW_FIRSTTABLE		= "FIRSTTABLE"i		!ident_start
-KW_FULL				= "FULL	"i			!ident_start
-KW_IGNOREINDEX		= "IGNOREINDEX"i 	!ident_start
-KW_INORDER			= "INORDER"i		!ident_start
-KW_NOFLATTEN		= "NOFLATTEN"i		!ident_start
-KW_NOMERGE			= "NOMERGE"i		!ident_start
-KW_NOSVSO			= "NOSVSO"i			!ident_start
-KW_NOTOPOPT			= "NOTOPOPT"i		!ident_start
-KW_NOUNIONOROPT		= "NOUNIONOROPT	"i	!ident_start
-KW_NOUNIONOROPT		= "NOUNIONOROPT"i	!ident_start
-KW_PARALLEL			= "PARALLEL"i		!ident_start
-KW_STARTTABLE		= "STARTTABLE"i		!ident_start
-
 KW_AS       = "AS"i         !ident_start
 KW_TABLE    = "TABLE"i      !ident_start { return 'TABLE'; }
 KW_TRIGGER    = "TRIGGER"i      !ident_start { return 'TRIGGER'; }
@@ -3443,8 +3409,6 @@ KW_LIKE     = "LIKE"i       !ident_start { return 'LIKE'; }
 KW_RLIKE    = "RLIKE"i      !ident_start { return 'RLIKE'; }
 KW_REGEXP   = "REGEXP"i     !ident_start { return 'REGEXP'; }
 KW_EXISTS   = "EXISTS"i     !ident_start { return 'EXISTS'; }
-KW_FOR		= "FOR"i			!ident_start { return 'FOR'; }	
-KW_SOME		= "SOME"i			!ident_start { return 'SOME'; }
 
 KW_NOT      = "NOT"i        !ident_start { return 'NOT'; }
 KW_AND      = "AND"i        !ident_start { return 'AND'; }
@@ -3831,7 +3795,7 @@ character_string_type
   }
   / t:KW_CHAR { return { dataType: t }; }
   / t:KW_VARCHAR { return { dataType: t }; }
-  
+
 numeric_type_suffix
   = un: KW_UNSIGNED? __ ze: KW_ZEROFILL? {
     const result = []
